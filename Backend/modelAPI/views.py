@@ -10,7 +10,6 @@ class TransactionViewSet(viewsets.ModelViewSet):
     serializer_class = TransactionSerializer
 
 class CategoryPredictionView(views.APIView):
-    permission_classes = [permissions.IsAuthenticated]
     def post(self, request, *args, **kwargs):
         input_data = make_dataframe(
             withdrawal=request.data.get('Withdrawal', 0),

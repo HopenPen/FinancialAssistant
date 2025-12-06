@@ -1,6 +1,18 @@
 <script setup lang="ts">
   import { ref, onMounted } from 'vue';
 
+  function authFetch(url: string, options: any = {}) {
+    const token = localStorage.getItem('access');
+
+    const headers = {
+      'Content-Type': 'application/json',
+      ...(options.headers || {}),
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+    };
+
+    return fetch(url, { ...options, headers });
+  }
+
   interface Transaction {
     id?: number;
     date: string;
@@ -20,6 +32,10 @@
     { value: 'MS', text: 'Другое' },
   ];
 
+  const predictions = [
+    {value: 'Misc', text: 'MS'}
+  ]
+
   const transactions = ref<Transaction[]>([]);
   const addingTransaction = ref(false);
 
@@ -29,6 +45,7 @@
   const Withdrawal = ref(0);
   const Deposit = ref(0);
   const Balance = ref(0);
+  const username = ref();
 
   function inputDate(event: Event) {
     const target = event.target as HTMLInputElement;
@@ -57,6 +74,12 @@
     const target = event.target as HTMLInputElement;
     Balance.value = parseFloat(target.value);
   }
+
+  function formatDate(dateStr: string) {
+    const [year, month, day] = dateStr.split('-');
+    return `${day}.${month}.${year}`;
+  }
+
   function resetInputFields() {
     Date.value = '';
     Category.value = '';
@@ -82,28 +105,79 @@
     addingTransaction.value = false;
   }
 
-  onMounted(async () => {
-    transactions.value = await fetch('http://127.0.0.1:8000/api/v1/transactions/', {
-    method: 'GET',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    credentials: 'include',
-  })
-    .then((response) => response.json())
-    .then((data) => {
-      console.log('raw transactions from API', data);
-      // Normalize: убедимся, что у каждого элемента есть поле id
-      return data.map((t: any, i: number) => {
-        // possible id fields from backend: id, pk, ID
-        const id = t.id ?? t.pk ?? t.ID ?? i;
-        return { id, ...t };
-      });
+  async function getCategotyPrediction(){
+    Category.value =  await fetch('http://127.0.0.1:8000/api/v1/predict-category/', {
+      method: 'POST',
+      headers:{
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        'Withdrawal': Withdrawal.value,
+        'Deposite': Deposit.value,
+        'Balance': Balance.value
+      })
     })
-    .catch((error) => {
-      console.error('Error fetching transactions:', error);
-      return [];
+    .then(response => {
+      if (!response.ok) {
+        throw new Error('Ошибка сети: ' + response.status);
+      }
+      return response.json();
+    })
+    .then(data => {
+      console.log('Ответ сервера:', data);
+      return predictions.find(cat => cat.value === data.predicted_category)?.text || ' '
+    })
+    .catch(error => {
+      console.error('Ошибка запроса:', error);
+      return ' ';
     });
+    console.log(Category.value)
+  }
+
+  function logout() {
+    localStorage.removeItem('access');
+    localStorage.removeItem('refresh');
+    localStorage.removeItem('user');
+    location.href = '/login';
+  }
+
+  onMounted(async () => {
+    const access = localStorage.getItem('access');
+    if (!access) {
+      location.href = '/login';
+      return;
+    }
+
+    // 1. Загружаем профиль
+    username.value = await authFetch('http://127.0.0.1:8000/auth/profile/')
+      .then(res => {
+        if (res.status === 401) {
+          location.href = '/login';
+          return;
+        }
+        return res.json();
+      })
+      .then(data => data?.username)
+      .catch(() => {
+        location.href = '/login';
+      });
+
+    // 2. Загружаем транзакции
+    transactions.value = await authFetch('http://127.0.0.1:8000/api/v1/transactions/')
+      .then(res => {
+        if (res.status === 401) {
+          location.href = '/login';
+          return [];
+        }
+        return res.json();
+      })
+      .then(data => {
+        return data.map((t: any, i: number) => {
+          const id = t.id ?? t.pk ?? t.ID ?? i;
+          return { id, ...t };
+        });
+      })
+      .catch(() => []);
   });
 </script>
 
@@ -111,6 +185,10 @@
   <main>
     <div class="header">
       <h1>Ваш помощник по финансам</h1>
+      <div style="display: flex; align-items: right;">
+        <button @click="logout" class="nice-button" style="height: 50px; margin-top: 10px; border: solid 1px black">Выйти</button>
+        <h1 style="padding-right: 10px; padding-top: 10px;">{{ username }}</h1>
+      </div>
     </div>
     <div class="content">
       <div class="welcome">
@@ -133,7 +211,7 @@
             <option value="SL">Зарплата</option>
             <option value="MS">Другое</option>
           </select>
-          <button class="nice-button" id="predict-button">Предсказать</button>
+          <button @click="getCategotyPrediction" class="nice-button" id="predict-button">Предсказать</button>
           </div>
         </div>
         <div class="input-block">
@@ -158,7 +236,7 @@
         <div class="transaction-card">
           <div class="input-block">
             <h2>Дата</h2>
-            <h2>{{ transaction.date }}</h2><br>
+            <h2>{{ formatDate(transaction.date) }}</h2><br>
           </div>
           <div class="input-block">
             <h2>Категория</h2>
