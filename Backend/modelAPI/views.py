@@ -44,7 +44,7 @@ class PrognoseView(views.APIView):
 
         month_ago = latest_date - relativedelta(months=1)
 
-        month_ago = Transaction.objects.filter(user=request.user, date__gte=month_ago, date__lte=latest_date).order_by('-date').first()
+        month_ago = Transaction.objects.filter(user=request.user, date__gte=month_ago, date__lte=latest_date).order_by('date').first()
         if month_ago is None:
             prognosis = "Недостаточно данных для прогноза."
             balance_state = 0
@@ -52,6 +52,7 @@ class PrognoseView(views.APIView):
             balance_difference = latest_transaction.Balance - month_ago.Balance
             if balance_difference >= 0:
                 prognosis = "Ваш бюджет стабилен."
+                print(month_ago.Balance)
                 balance_state = 1
             else:
                 month_remaining = latest_transaction.Balance / abs(balance_difference)
@@ -64,6 +65,13 @@ class PrognoseView(views.APIView):
             cushion = "Вам не требуется финансовая подушка."
         else:
             cushion = f"Рекомендуется создать минимальную финансовую подушку в размере {abs(latest_transaction.Balance + balance_difference * 6)} на 6 месяцев."
+        
+        unnecessary_transactions = Transaction.objects.filter(user=request.user,Category__in=['TR', 'SP'])
+        unnecessary_transactions_total = unnecessary_transactions.aggregate(models.Sum('Withdrawal'))['Withdrawal__sum'] or 0
+        misc_transactions = Transaction.objects.filter(user=request.user,Category='MS')
+        misc_transactions_total = misc_transactions.aggregate(models.Sum('Withdrawal'))['Withdrawal__sum'] or 0
+        recomendation = f"Вы можете сэкономить на необязательных тратах (транспорт, покупки) около {unnecessary_transactions_total} и на прочих мелких тратах около {misc_transactions_total} в месяц."
+        
         print(prognosis)
         print(cushion)
-        return Response({'message': prognosis + '\n' + cushion + '\n'})
+        return Response({'message': prognosis + '\n' + cushion + '\n' + recomendation})
