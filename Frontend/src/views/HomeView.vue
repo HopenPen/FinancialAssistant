@@ -33,7 +33,12 @@
   ];
 
   const predictions = [
-    {value: 'Misc', text: 'MS'}
+    {value: 'Misc', text: 'MS'},
+    {value: 'Food', text: 'FD'},
+    {value: 'Transport', text: 'TR'},
+    {value: 'Shopping', text: 'SP'},
+    {value: 'Rent', text: 'RT'},
+    {value: 'Salary', text: 'SL'},
   ]
 
   const transactions = ref<Transaction[]>([]);
@@ -46,6 +51,16 @@
   const Deposit = ref(0);
   const Balance = ref(0);
   const username = ref();
+  const prognoseMessage = ref('');
+
+  function resetInputFields() {
+    Date.value = '';
+    Category.value = '';
+    RefNo.value = '';
+    Withdrawal.value = 0;
+    Deposit.value = 0;
+    Balance.value = 0;
+  }
 
   function inputDate(event: Event) {
     const target = event.target as HTMLInputElement;
@@ -80,30 +95,53 @@
     return `${day}.${month}.${year}`;
   }
 
-  function resetInputFields() {
-    Date.value = '';
-    Category.value = '';
-    RefNo.value = '';
-    Withdrawal.value = 0;
-    Deposit.value = 0;
-    Balance.value = 0;
-  }
+  const createTransaction = async () => {
+  try {
+    const token = localStorage.getItem("access");
 
-  function createTransaction() {
-    console.log(Date.value);
-    const newTransaction = {
+    const payload = {
+      Category: Category.value,
       date: Date.value,
-      category: Category.value,
       RefNo: RefNo.value,
-      withdrawal: Withdrawal.value,
-      deposit: Deposit.value,
-      balance: Balance.value,
+      Withdrawal: Withdrawal.value,
+      Deposit: Deposit.value,
+      Balance: Balance.value,
     };
 
-    transactions.value.push(newTransaction);
-    resetInputFields();
+    const response = await fetch('http://127.0.0.1:8000/api/v1/transactions/', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      console.error("Ошибка при создании транзакции:", await response.text());
+      return;
+    }
+
+    const created = await response.json();
+
+    const normalized = {
+      id: created.id,
+      date: created.date,
+      category: created.Category,
+      RefNo: created.RefNo,
+      withdrawal: created.Withdrawal,
+      deposit: created.Deposit,
+      balance: created.Balance,
+    };
+
+    transactions.value.push(normalized);
     addingTransaction.value = false;
+    resetInputFields();
+
+  } catch (error) {
+    console.error("Ошибка сети:", error);
   }
+};
 
   async function getCategotyPrediction(){
     Category.value =  await fetch('http://127.0.0.1:8000/api/v1/predict-category/', {
@@ -148,7 +186,6 @@
       return;
     }
 
-    // 1. Загружаем профиль
     username.value = await authFetch('http://127.0.0.1:8000/auth/profile/')
       .then(res => {
         if (res.status === 401) {
@@ -162,7 +199,6 @@
         location.href = '/login';
       });
 
-    // 2. Загружаем транзакции
     transactions.value = await authFetch('http://127.0.0.1:8000/api/v1/transactions/')
       .then(res => {
         if (res.status === 401) {
@@ -172,12 +208,27 @@
         return res.json();
       })
       .then(data => {
-        return data.map((t: any, i: number) => {
-          const id = t.id ?? t.pk ?? t.ID ?? i;
-          return { id, ...t };
+        console.log('Загруженные транзакции:', data);
+        return data.map((t: any) => {
+          return {
+            id: t.id,
+            date: t.date,
+            category: t.Category,
+            RefNo: t.RefNo,
+            withdrawal: t.Withdrawal,
+            deposit: t.Deposit,
+            balance: t.Balance,
+          };
         });
       })
       .catch(() => []);
+    prognoseMessage.value = await authFetch('http://127.0.0.1:8000/api/v1/prognose/').then(res => {
+      if (res.status === 401) {
+        location.href = '/login';
+        return '';
+      }
+      return res.json();
+    }).then(data => data?.message).catch(() => '');
   });
 </script>
 
@@ -202,7 +253,7 @@
         </div>
         <div class="input-block">
           <h2>Категория транзакции</h2><br>
-          <div>
+          <div style="display: flex; flex-direction: row;">
           <select :value="Category" @input="inputCategory" class="category-select">
             <option value="FD">Еда</option>
             <option value="TR">Транспорт</option>
@@ -259,6 +310,9 @@
             <h2>{{ transaction.balance }}</h2>
           </div>
         </div>
+      </div>
+      <div class="prognose-wrapper" v-if="prognoseMessage">
+        <div class="prognose-box">{{ prognoseMessage }}</div>
       </div>
     </div>
   </main>
@@ -435,5 +489,28 @@
     flex-direction: column;
     padding-left:20px;
     padding-right:20px;
+  }
+  .prognose-wrapper {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    width: 100%;
+    margin-top: 12px;
+    margin-bottom: 24px;
+  }
+
+  .prognose-box {
+    background: #ffffff;
+    border: 2px solid #28a745;
+    border-radius: 12px;
+    padding: 16px 24px;
+    max-width: 900px;
+    width: calc(100% - 40px);
+    box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+    text-align: center;
+    font-size: 18px;
+    line-height: 1.4;
+    color: #0b6623;                    
+    font-weight: 600;
   }
 </style>

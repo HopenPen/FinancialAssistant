@@ -19,6 +19,7 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         )
 
     def validate(self, attrs):
+        print('validate called')
         if attrs['password'] != attrs['password_confirm']:
             raise serializers.ValidationError(
                 {"password": "Password fields didnt match."}
@@ -46,6 +47,7 @@ class UserLoginSerializer(serializers.Serializer):
                 password=password
             )
             if not user:
+                print()
                 raise serializers.ValidationError(
                     'User not found.'
                 )

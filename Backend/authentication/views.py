@@ -16,7 +16,9 @@ class RegisterView(generics.CreateAPIView):
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
+        print(request.data)
         serializer.is_valid(raise_exception=True)
+        print(serializer.validated_data)
         user = serializer.save()
 
         refresh = RefreshToken.for_user(user)
